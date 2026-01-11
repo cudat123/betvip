@@ -7,13 +7,12 @@ const CONFIG = {
   UPDATE_INTERVAL: 5000,
   MAX_HISTORY: 100,
   PATTERN_LENGTH: 14,
-  XENG16_API: 'https://taixiu.backend-98423498294223x1.online/api/luckydice/GetSoiCau',
-  NEW_API: 'YOUR_NEW_API_URL_HERE' // Thay bằng API mới của bạn
+  API_URL: 'https://wtx.macminim6.online/v1/tx/sessions' // Bạn tự thay API
 };
 
 // =========== CƠ SỞ DỮ LIỆU CẦU THỰC ===========
 const CAU_DATABASE = {
- 'XTXXTXTTXXTTXX': 'X',
+'XTXXTXTTXXTTXX': 'X',
 'XXTXTTXXXTTXXT': 'X',
 'TXTXTTTXXTXXXT': 'T',
 'XXTXXTTXXXXTXT': 'X',
@@ -10033,11 +10032,10 @@ const app = express();
 // =========== MIDDLEWARE ===========
 app.use(express.static('public'));
 
-// =========== HÀM TIỆN ÍCH ===========
+// =========== HÀM BIÊN DỊCH API MỚI ===========
 async function getLatestResult() {
   try {
-    // THAY ĐỔI: Sử dụng API mới với cấu trúc dữ liệu mới
-    const response = await axios.get(CONFIG.NEW_API, {
+    const response = await axios.get(CONFIG.API_URL, {
       timeout: 8000,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -10047,50 +10045,70 @@ async function getLatestResult() {
     
     const data = response.data;
     
-    // Kiểm tra cấu trúc dữ liệu mới
-    if (!data || typeof data !== 'object') {
-      return null;
-    }
-    
-    // BIÊN DỊCH DỮ LIỆU MỚI:
-    // {
-    //   "id": 6733993,                    -> Phiên số (SessionId)
-    //   "_id": "69639e422e797d46e0423884", -> ID database (bỏ qua)
+    // BIÊN DỊCH TỪ API MỚI:
+    // Input: {
+    //   "id": 6733993,                    -> Phiên số
+    //   "_id": "69639e422e797d46e0423884", -> ID database
     //   "resultTruyenThong": "XIU",       -> Kết quả: "TAI" hoặc "XIU"
     //   "dices": [1, 1, 5],              -> Xúc xắc: [xúc xắc 1, xúc xắc 2, xúc xắc 3]
     //   "point": 7                       -> Tổng điểm
     // }
     
-    // Chuyển đổi resultTruyenThong từ "TAI"/"XIU" sang "Tài"/"Xỉu"
-    const ketQua = data.resultTruyenThong === "TAI" ? "Tài" : "Xỉu";
+    // Output:
+    // {
+    //   SessionId: 6733993,
+    //   FirstDice: 1,
+    //   SecondDice: 1,
+    //   ThirdDice: 5,
+    //   DiceSum: 7,
+    //   KetQua: "Xỉu",
+    //   CreatedDate: "2024-01-01T00:00:00.000Z"
+    // }
     
-    const result = {
-      SessionId: parseInt(data.id),
-      FirstDice: parseInt(data.dices[0]),
-      SecondDice: parseInt(data.dices[1]),
-      ThirdDice: parseInt(data.dices[2]),
-      DiceSum: parseInt(data.point),
-      KetQua: ketQua,
-      CreatedDate: new Date().toISOString(),
-      RawData: data // Lưu dữ liệu gốc để debug
-    };
-    
-    // Kiểm tra tính hợp lệ
-    if (isNaN(result.SessionId) || isNaN(result.FirstDice) || 
-        isNaN(result.SecondDice) || isNaN(result.ThirdDice) || isNaN(result.DiceSum)) {
+    if (!data || typeof data !== 'object') {
       return null;
     }
     
-    // Kiểm tra tính nhất quán: tổng điểm có khớp với xúc xắc không
-    const calculatedSum = result.FirstDice + result.SecondDice + result.ThirdDice;
-    if (calculatedSum !== result.DiceSum) {
-      console.error(`⚠️ Tổng điểm không khớp: ${calculatedSum} ≠ ${result.DiceSum}`);
+    // Kiểm tra xem có phải là array hay object
+    let resultData;
+    if (Array.isArray(data)) {
+      // Nếu là array, lấy phần tử cuối cùng (mới nhất)
+      if (data.length === 0) return null;
+      resultData = data[data.length - 1];
+    } else {
+      resultData = data;
     }
     
-    // Kiểm tra tính nhất quán: kết quả có khớp với tổng điểm không
-    const calculatedResult = result.DiceSum >= 11 ? "Tài" : "Xỉu";
-    if (calculatedResult !== ketQua) {
-      console.error(`⚠️ Kết quả không khớp: ${calculatedResult} ≠ ${ketQua}`);
+    // Biên dịch dữ liệu
+    const ketQua = resultData.resultTruyenThong === "TAI" ? "Tài" : 
+                  resultData.resultTruyenThong === "XIU" ? "Xỉu" : 
+                  (resultData.point >= 11 ? "Tài" : "Xỉu");
+    
+    const result = {
+      SessionId: parseInt(resultData.id) || parseInt(resultData.SessionId) || 0,
+      FirstDice: Array.isArray(resultData.dices) ? parseInt(resultData.dices[0]) : 
+                (parseInt(resultData.FirstDice) || parseInt(resultData.Xuc_xac_1) || 0),
+      SecondDice: Array.isArray(resultData.dices) ? parseInt(resultData.dices[1]) : 
+                 (parseInt(resultData.SecondDice) || parseInt(resultData.Xuc_xac_2) || 0),
+      ThirdDice: Array.isArray(resultData.dices) ? parseInt(resultData.dices[2]) : 
+                (parseInt(resultData.ThirdDice) || parseInt(resultData.Xuc_xac_3) || 0),
+      DiceSum: parseInt(resultData.point) || 
+              parseInt(resultData.DiceSum) || 
+              parseInt(resultData.Tong) || 0,
+      KetQua: ketQua,
+      CreatedDate: resultData.CreatedDate || new Date().toISOString(),
+      RawData: resultData
+    };
+    
+    // Tính toán lại nếu thiếu
+    if (result.DiceSum === 0) {
+      result.DiceSum = result.FirstDice + result.SecondDice + result.ThirdDice;
+    }
+    
+    // Kiểm tra tính hợp lệ
+    if (result.SessionId === 0 || result.FirstDice === 0 || 
+        result.SecondDice === 0 || result.ThirdDice === 0) {
+      return null;
     }
     
     lastRealData = result;
@@ -10136,7 +10154,6 @@ function predictNextResult() {
       confidence: 0.85
     };
   } else {
-    // Phân tích xu hướng
     const last10 = history.slice(-10);
     const last10Tai = last10.filter(h => h === 'T').length;
     const last10Xiu = last10.filter(h => h === 'X').length;
@@ -10148,7 +10165,6 @@ function predictNextResult() {
     let prediction;
     let reason;
     
-    // Ưu tiên xu hướng ngắn hạn
     if (last5Tai >= 4) {
       prediction = "Tài";
       reason = `Mạnh Tài: ${last5Tai} Tài trong 5 lần gần nhất`;
@@ -10162,7 +10178,6 @@ function predictNextResult() {
       prediction = "Xỉu";
       reason = `Xu hướng Xỉu: ${last10Xiu} Xỉu trong 10 lần gần nhất`;
     } else {
-      // Nếu cân bằng, dự đoán theo xác suất tổng
       const totalTai = history.filter(h => h === 'T').length;
       const totalXiu = history.filter(h => h === 'X').length;
       const overallTaiRate = totalTai / history.length;
@@ -10196,7 +10211,6 @@ async function autoUpdateData() {
     const isNewSession = !sessionHistory.has(currentData.SessionId);
     
     if (isNewSession) {
-      // Lưu kết quả thực
       sessionHistory.set(currentData.SessionId, {
         result: currentData.KetQua,
         dice: [currentData.FirstDice, currentData.SecondDice, currentData.ThirdDice],
@@ -10205,16 +10219,13 @@ async function autoUpdateData() {
         sessionId: currentData.SessionId
       });
       
-      // Giới hạn lịch sử
       if (sessionHistory.size > 100) {
         const oldestKey = Array.from(sessionHistory.keys())[0];
         sessionHistory.delete(oldestKey);
       }
       
-      // Cập nhật phiên cuối
       lastSessionId = currentData.SessionId;
       
-      // Thêm vào lịch sử pattern
       const currentResult = convertToPattern(currentData.KetQua);
       history.push(currentResult);
       
@@ -10222,7 +10233,6 @@ async function autoUpdateData() {
         history = history.slice(-CONFIG.MAX_HISTORY);
       }
       
-      // Kiểm tra dự đoán cho phiên này
       const previousPrediction = predictionHistory.get(currentData.SessionId);
       if (previousPrediction) {
         const predictionResult = evaluatePrediction(currentData.KetQua, previousPrediction);
@@ -10235,19 +10245,16 @@ async function autoUpdateData() {
           consecutiveLosses++;
         }
         
-        // Xóa dự đoán đã được đánh giá
         predictionHistory.delete(currentData.SessionId);
       }
     }
     
-    // Tạo dự đoán cho phiên tiếp theo
     const nextSessionId = currentData.SessionId + 1;
     if (!predictionHistory.has(nextSessionId)) {
       const nextPrediction = predictNextResult();
       lastPrediction = nextPrediction.prediction;
       lastPattern = nextPrediction.pattern;
       
-      // Lưu dự đoán cho phiên tiếp theo
       predictionHistory.set(nextSessionId, lastPrediction);
     }
     
@@ -10259,10 +10266,8 @@ async function autoUpdateData() {
 // =========== ROUTE API ===========
 app.get('/api/data', async (req, res) => {
   try {
-    // Lấy dữ liệu mới nhất
     await autoUpdateData();
     
-    // Sử dụng dữ liệu mới nhất
     const currentData = lastRealData;
     
     if (!currentData) {
@@ -10273,49 +10278,36 @@ app.get('/api/data', async (req, res) => {
       });
     }
     
-    // Lấy dự đoán cho phiên tiếp theo
     const nextSessionId = currentData.SessionId + 1;
     const nextPrediction = predictionHistory.get(nextSessionId) || lastPrediction;
     
-    // Tính thống kê thực tế
     const taiCount = history.filter(h => h === 'T').length;
     const xiuCount = history.filter(h => h === 'X').length;
     const total = taiCount + xiuCount;
     const taiRate = total > 0 ? (taiCount / total * 100).toFixed(1) : '0.0';
     const xiuRate = total > 0 ? (xiuCount / total * 100).toFixed(1) : '0.0';
     
-    // Lấy kết quả đánh giá cho phiên hiện tại
     let ketqua_ddoan = "Chưa có";
     const currentPrediction = predictionHistory.get(currentData.SessionId);
     if (currentPrediction) {
       ketqua_ddoan = evaluatePrediction(currentData.KetQua, currentPrediction);
     }
     
-    // Tạo response với đầy đủ thông tin
     const response = {
-      // Thông tin phiên hiện tại
       Phien: currentData.SessionId,
       Xuc_xac_1: currentData.FirstDice,
       Xuc_xac_2: currentData.SecondDice,
       Xuc_xac_3: currentData.ThirdDice,
       Tong: currentData.DiceSum,
       Ket_qua: currentData.KetQua,
-      
-      // Dự đoán phiên tiếp theo
       phien_hien_tai: currentData.SessionId + 1,
       du_doan: nextPrediction,
       li_do: "Phân tích pattern và xu hướng từ dữ liệu thực",
-      
-      // Đánh giá dự đoán
       ketqua_ddoan: ketqua_ddoan,
-      
-      // Chiến lược
       chien_luoc: consecutiveLosses >= 2 ? "Điều chỉnh chiến lược" : "Theo xu hướng hiện tại",
       chien_luoc_chi_tiet: consecutiveLosses >= 2 ? 
         `Thua ${consecutiveLosses} lần liên tiếp. Cần xem xét lại pattern.` :
         `Theo phân tích xu hướng từ ${total} kết quả gần đây`,
-      
-      // Thống kê thực tế
       thong_ke: {
         tong_du_doan: totalPredictions,
         dung: correctPredictions,
@@ -10331,25 +10323,12 @@ app.get('/api/data', async (req, res) => {
         phien_moi_nhat: currentData.SessionId,
         tong_phien_da_xu_ly: sessionHistory.size
       },
-      
-      // Lịch sử
       lich_su_gian: history.slice(-10).map(h => h === 'T' ? 'Tài' : 'Xỉu'),
       pattern_hien_tai: lastPattern,
-      
-      // Metadata
       timestamp: new Date().toISOString(),
-      data_source: "API mới - Dữ liệu thực",
-      api_format: "JSON mới với resultTruyenThong",
+      data_source: "API với cấu trúc mới (resultTruyenThong & dices)",
       auto_update: isAutoUpdating,
-      update_interval: CONFIG.UPDATE_INTERVAL / 1000 + " giây",
-      
-      // Dữ liệu gốc từ API mới (để kiểm tra)
-      raw_data: currentData.RawData ? {
-        id: currentData.RawData.id,
-        resultTruyenThong: currentData.RawData.resultTruyenThong,
-        dices: currentData.RawData.dices,
-        point: currentData.RawData.point
-      } : null
+      update_interval: CONFIG.UPDATE_INTERVAL / 1000 + " giây"
     };
     
     res.json(response);
@@ -10370,7 +10349,7 @@ app.get('/', (req, res) => {
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dự Đoán Tài Xỉu - API Mới</title>
+    <title>Dự Đoán Tài Xỉu - Biên Dịch API Mới</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body { font-family: Arial, sans-serif; background: #0f172a; color: #fff; min-height: 100vh; padding: 15px; }
@@ -10379,7 +10358,6 @@ app.get('/', (req, res) => {
       h1 { font-size: 1.8em; margin-bottom: 5px; color: #3b82f6; }
       .subtitle { font-size: 0.9em; color: #94a3b8; margin-bottom: 10px; }
       .data-source { background: rgba(22, 163, 74, 0.2); color: #22c55e; padding: 5px 10px; border-radius: 15px; font-size: 0.8em; display: inline-block; }
-      .api-format { background: rgba(168, 85, 247, 0.2); color: #a855f7; padding: 5px 10px; border-radius: 15px; font-size: 0.8em; display: inline-block; margin-left: 10px; }
       .dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; margin-bottom: 20px; }
       .card { background: rgba(30, 41, 59, 0.8); border-radius: 10px; padding: 15px; border: 1px solid rgba(255, 255, 255, 0.1); }
       .card h2 { font-size: 1.1em; margin-bottom: 10px; color: #60a5fa; display: flex; align-items: center; gap: 8px; }
@@ -10408,9 +10386,6 @@ app.get('/', (req, res) => {
       .strategy { background: rgba(245, 158, 11, 0.15); padding: 10px; border-radius: 6px; margin-top: 10px; font-size: 0.85em; }
       .api-link { margin-top: 10px; text-align: center; }
       .api-link a { color: #60a5fa; text-decoration: none; padding: 6px 12px; background: rgba(15, 23, 42, 0.8); border-radius: 6px; display: inline-block; font-size: 0.8em; }
-      .status-indicator { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 5px; }
-      .status-active { background-color: #22c55e; }
-      .raw-data { margin-top: 10px; padding: 10px; background: rgba(0, 0, 0, 0.3); border-radius: 6px; font-size: 0.8em; color: #94a3b8; }
       @media (max-width: 768px) { .dashboard { grid-template-columns: 1fr; } .dice { width: 45px; height: 45px; } h1 { font-size: 1.5em; } }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -10418,14 +10393,11 @@ app.get('/', (req, res) => {
   <body>
     <div class="container">
       <header>
-        <h1><i class="fas fa-chart-line"></i> Dự Đoán Tài Xỉu - API Mới</h1>
-        <div class="subtitle">Hệ thống xử lý API mới với cấu trúc dữ liệu mới</div>
-        <div id="status" class="subtitle">Đang kết nối API mới...</div>
+        <h1><i class="fas fa-chart-line"></i> Dự Đoán Tài Xỉu</h1>
+        <div class="subtitle">Hệ thống biên dịch API mới - Chạy liên tục 24/7</div>
+        <div id="status" class="subtitle">Đang kết nối...</div>
         <div class="data-source">
-          <i class="fas fa-database"></i> API mới: resultTruyenThong & dices
-        </div>
-        <div class="api-format">
-          <i class="fas fa-code"></i> JSON mới
+          <i class="fas fa-code"></i> Biên dịch từ API mới (resultTruyenThong & dices)
         </div>
         <div class="api-link">
           <a href="/api/data" target="_blank"><i class="fas fa-code"></i> Xem JSON API (/api/data)</a>
@@ -10436,21 +10408,21 @@ app.get('/', (req, res) => {
         <div class="card">
           <h2><i class="fas fa-dice"></i> Kết Quả Hiện Tại</h2>
           <div id="currentResult">
-            <div class="loading">Đang tải dữ liệu từ API mới...</div>
+            <div class="loading">Đang tải dữ liệu...</div>
           </div>
         </div>
         
         <div class="card">
           <h2><i class="fas fa-bullseye"></i> Dự Đoán Tiếp Theo</h2>
           <div id="prediction">
-            <div class="loading">Đang phân tích dữ liệu...</div>
+            <div class="loading">Đang tính toán...</div>
           </div>
         </div>
         
         <div class="card">
-          <h2><i class="fas fa-chart-bar"></i> Thống Kê Thực</h2>
+          <h2><i class="fas fa-chart-bar"></i> Thống Kê</h2>
           <div id="stats">
-            <div class="loading">Đang tính toán thống kê...</div>
+            <div class="loading">Đang tải thống kê...</div>
           </div>
         </div>
       </div>
@@ -10462,40 +10434,21 @@ app.get('/', (req, res) => {
         </div>
       </div>
       
-      <div class="card">
-        <h2><i class="fas fa-info-circle"></i> Thông Tin API Mới</h2>
-        <div style="padding: 10px; font-size: 0.9em; color: #94a3b8;">
-          <div style="margin-bottom: 5px;"><i class="fas fa-tag"></i> id: Số phiên (SessionId)</div>
-          <div style="margin-bottom: 5px;"><i class="fas fa-poll"></i> resultTruyenThong: "TAI" hoặc "XIU"</div>
-          <div style="margin-bottom: 5px;"><i class="fas fa-dice"></i> dices: [xúc xắc 1, xúc xắc 2, xúc xắc 3]</div>
-          <div style="margin-bottom: 5px;"><i class="fas fa-calculator"></i> point: Tổng điểm 3 xúc xắc</div>
-          <div><i class="fas fa-sync-alt"></i> Tự động cập nhật: Mỗi 5 giây</div>
-        </div>
-      </div>
-      
-      <div id="rawDataContainer" class="card" style="display: none;">
-        <h2><i class="fas fa-code"></i> Dữ Liệu Gốc API</h2>
-        <div id="rawData" class="raw-data">
-          Đang tải dữ liệu gốc...
-        </div>
-      </div>
-      
       <div class="buttons">
-        <button onclick="refreshData()"><i class="fas fa-sync-alt"></i> Làm Mới Ngay</button>
+        <button onclick="refreshData()"><i class="fas fa-sync-alt"></i> Làm Mới</button>
         <button onclick="toggleAutoRefresh()"><i class="fas fa-clock"></i> <span id="autoRefreshText">Tự Động: BẬT</span></button>
         <button onclick="showPattern()"><i class="fas fa-project-diagram"></i> Xem Pattern</button>
-        <button onclick="showRawData()"><i class="fas fa-code"></i> <span id="rawDataText">Hiện Dữ Liệu Gốc</span></button>
+        <button onclick="window.open('/api/data', '_blank')"><i class="fas fa-file-code"></i> Xem JSON</button>
       </div>
       
       <div class="timestamp">
-        Cập nhật lần cuối: <span id="lastUpdate">--:--:--</span> | Phiên mới nhất: <span id="latestSession">--</span>
+        Cập nhật lần cuối: <span id="lastUpdate">--:--:--</span> | Phiên: <span id="latestSession">--</span>
       </div>
     </div>
     
     <script>
       let autoRefresh = true;
       let refreshInterval;
-      let showRaw = false;
       
       function formatNumber(num) {
         return num.toString().padStart(2, '0');
@@ -10529,22 +10482,8 @@ app.get('/', (req, res) => {
         if (autoRefresh) startAutoRefresh();
       }
       
-      function showRawData() {
-        showRaw = !showRaw;
-        const container = document.getElementById('rawDataContainer');
-        const buttonText = document.getElementById('rawDataText');
-        
-        if (showRaw) {
-          container.style.display = 'block';
-          buttonText.textContent = 'Ẩn Dữ Liệu Gốc';
-        } else {
-          container.style.display = 'none';
-          buttonText.textContent = 'Hiện Dữ Liệu Gốc';
-        }
-      }
-      
       function fetchData() {
-        document.getElementById('status').textContent = 'Đang lấy dữ liệu từ API mới...';
+        document.getElementById('status').textContent = 'Đang cập nhật...';
         fetch('/api/data')
           .then(response => response.json())
           .then(data => {
@@ -10553,19 +10492,17 @@ app.get('/', (req, res) => {
               return;
             }
             updateDisplay(data);
-            document.getElementById('status').textContent = 'Đã cập nhật từ API mới';
+            document.getElementById('status').textContent = 'Đã cập nhật';
             updateTime();
           })
           .catch(error => {
-            document.getElementById('status').textContent = 'Lỗi kết nối API';
+            document.getElementById('status').textContent = 'Lỗi kết nối';
           });
       }
       
       function updateDisplay(data) {
-        // Cập nhật phiên mới nhất
         document.getElementById('latestSession').textContent = data.Phien || '--';
         
-        // Kết quả hiện tại
         document.getElementById('currentResult').innerHTML = \`
           <div class="info-grid">
             <div class="info-item">
@@ -10590,12 +10527,8 @@ app.get('/', (req, res) => {
             <div class="dice">\${data.Xuc_xac_2}</div>
             <div class="dice">\${data.Xuc_xac_3}</div>
           </div>
-          <div style="font-size: 0.8em; color: #94a3b8; text-align: center; margin-top: 10px;">
-            <i class="fas fa-database"></i> API mới: resultTruyenThong = "\${data.raw_data?.resultTruyenThong || 'N/A'}"
-          </div>
         \`;
         
-        // Dự đoán
         document.getElementById('prediction').innerHTML = \`
           <div class="prediction">
             <div class="label">Phiên tiếp theo: #\${data.phien_hien_tai}</div>
@@ -10608,7 +10541,6 @@ app.get('/', (req, res) => {
           </div>
         \`;
         
-        // Thống kê
         document.getElementById('stats').innerHTML = \`
           <div class="stats-grid">
             <div class="stat-item">
@@ -10630,38 +10562,23 @@ app.get('/', (req, res) => {
           </div>
           <div style="margin-top: 10px; font-size: 0.8em; color: #94a3b8;">
             <div><i class="fas fa-chart-pie"></i> Tài: \${data.thong_ke.ty_le_thuc_te.tai} | Xỉu: \${data.thong_ke.ty_le_thuc_te.xiu}</div>
-            <div><i class="fas fa-code"></i> Pattern: \${data.pattern_hien_tai || 'Đang tính...'}</div>
-            <div><i class="fas fa-history"></i> Đã xử lý: \${data.thong_ke.tong_phien_da_xu_ly || 0} phiên</div>
           </div>
         \`;
         
-        // Lịch sử
         document.getElementById('history').innerHTML = data.lich_su_gian.map((item, index) => {
           const isTai = item === 'Tài';
           return \`<div class="history-item \${isTai ? 'tai' : 'xiu'}">\${isTai ? 'T' : 'X'}</div>\`;
         }).join('');
-        
-        // Dữ liệu gốc
-        if (data.raw_data) {
-          document.getElementById('rawData').innerHTML = \`
-            <div><strong>id:</strong> \${data.raw_data.id}</div>
-            <div><strong>resultTruyenThong:</strong> \${data.raw_data.resultTruyenThong}</div>
-            <div><strong>dices:</strong> [\${data.raw_data.dices?.join(', ') || ''}]</div>
-            <div><strong>point:</strong> \${data.raw_data.point}</div>
-          \`;
-        }
       }
       
       function showPattern() {
         fetch('/api/data')
           .then(response => response.json())
           .then(data => {
-            alert('Pattern hiện tại:\\n\\n' + (data.pattern_hien_tai || 'Chưa có đủ dữ liệu') + 
-                  '\\n\\nLịch sử 10 lần:\\n' + data.lich_su_gian.join(' '));
+            alert('Pattern hiện tại:\\n\\n' + (data.pattern_hien_tai || 'Chưa có đủ dữ liệu'));
           });
       }
       
-      // Khởi động
       document.addEventListener('DOMContentLoaded', function() {
         fetchData();
         startAutoRefresh();
@@ -10673,22 +10590,18 @@ app.get('/', (req, res) => {
   `);
 });
 
-// =========== KHỞI ĐỘNG SERVER VÀ TỰ ĐỘNG CẬP NHẬT ===========
+// =========== KHỞI ĐỘNG SERVER ===========
 app.listen(CONFIG.PORT, () => {
-  console.log(`Server running at http://localhost:${CONFIG.PORT}`);
-  console.log("Starting auto-update service with NEW API format...");
+  console.log(`Server chạy tại http://localhost:${CONFIG.PORT}`);
   
-  // Chạy ngay lần đầu
   autoUpdateData();
   
-  // Thiết lập interval để chạy liên tục
   const updateInterval = setInterval(async () => {
     if (isAutoUpdating) {
       await autoUpdateData();
     }
   }, CONFIG.UPDATE_INTERVAL);
   
-  // Đảm bảo dừng interval khi server tắt
   process.on('SIGINT', () => {
     clearInterval(updateInterval);
     process.exit(0);
