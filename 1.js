@@ -7,7 +7,7 @@ const CONFIG = {
   UPDATE_INTERVAL: 5000,
   MAX_HISTORY: 100,
   PATTERN_LENGTH: 14,
-  API_URL: 'https://wtx.macminim6.online/v1/tx/sessions' // API mới của bạn
+  API_URL: 'https://wtx.macminim6.online/v1/tx/sessions'
 };
 
 // =========== CƠ SỞ DỮ LIỆU CẦU THỰC ===========
@@ -10032,140 +10032,57 @@ const app = express();
 // =========== MIDDLEWARE ===========
 app.use(express.static('public'));
 
-// =========== HÀM BIÊN DỊCH API MỚI ===========
+// =========== HÀM BIÊN DỊCH DUY NHẤT ===========
 async function getLatestResult() {
   try {
-    console.log(`📡 Đang lấy dữ liệu từ API: ${CONFIG.API_URL}`);
-    
     const response = await axios.get(CONFIG.API_URL, {
-      timeout: 10000,
+      timeout: 8000,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
+        'Accept': 'application/json'
       }
     });
     
-    console.log('✅ API trả về thành công');
-    
     const data = response.data;
     
-    // Kiểm tra cấu trúc dữ liệu
-    console.log('📊 Dữ liệu API:', typeof data, Array.isArray(data) ? `Mảng ${data.length} phần tử` : 'Object');
-    
-    if (!data) {
-      console.log('❌ API trả về null hoặc undefined');
-      return null;
-    }
-    
-    // Xử lý dữ liệu API mới
-    let sessions = [];
-    
-    if (Array.isArray(data)) {
-      // Nếu là mảng, lấy trực tiếp
-      sessions = data;
-      console.log(`📋 Tìm thấy ${sessions.length} phiên trong mảng`);
-    } else if (data.data && Array.isArray(data.data)) {
-      // Nếu có cấu trúc { data: [...] }
-      sessions = data.data;
-      console.log(`📋 Tìm thấy ${sessions.length} phiên trong data.data`);
-    } else if (data.sessions && Array.isArray(data.sessions)) {
-      // Nếu có cấu trúc { sessions: [...] }
-      sessions = data.sessions;
-      console.log(`📋 Tìm thấy ${sessions.length} phiên trong data.sessions`);
-    } else {
-      console.log('❌ Không tìm thấy cấu trúc dữ liệu hợp lệ');
-      return null;
-    }
-    
-    if (sessions.length === 0) {
-      console.log('❌ Không có phiên nào trong dữ liệu');
+    if (!Array.isArray(data) || data.length === 0) {
       return null;
     }
     
     // Tìm phiên có ID lớn nhất (phiên mới nhất)
-    let latestSession = sessions[0];
-    for (const session of sessions) {
+    let latestSession = data[0];
+    for (const session of data) {
       if (session.id > latestSession.id) {
         latestSession = session;
       }
     }
     
-    console.log(`🎯 Phiên mới nhất: #${latestSession.id}`);
-    console.log(`🎲 Dữ liệu phiên:`, latestSession);
+    // BIÊN DỊCH DUY NHẤT:
+    // Input: { "id": 6734241, "resultTruyenThong": "TAI", "dices": [3, 6, 3], "point": 12 }
+    // Output: { SessionId: 6734241, FirstDice: 3, SecondDice: 6, ThirdDice: 3, DiceSum: 12, KetQua: "Tài" }
     
-    // BIÊN DỊCH TỪ CẤU TRÚC MỚI:
-    // {
-    //   "id": 6733993,
-    //   "_id": "69639e422e797d46e0423884",
-    //   "resultTruyenThong": "XIU",
-    //   "dices": [1, 1, 5],
-    //   "point": 7
-    // }
+    const ketQua = latestSession.resultTruyenThong === "TAI" ? "Tài" : "Xỉu";
     
-    // Kiểm tra các trường bắt buộc
-    if (!latestSession.id || !Array.isArray(latestSession.dices) || latestSession.dices.length < 3) {
-      console.log('❌ Dữ liệu phiên không hợp lệ:', latestSession);
-      return null;
-    }
-    
-    // Biên dịch resultTruyenThong từ "TAI"/"XIU" sang "Tài"/"Xỉu"
-    const resultTruyenThong = latestSession.resultTruyenThong || '';
-    let ketQua;
-    
-    if (resultTruyenThong.toUpperCase() === 'TAI') {
-      ketQua = "Tài";
-    } else if (resultTruyenThong.toUpperCase() === 'XIU') {
-      ketQua = "Xỉu";
-    } else {
-      // Nếu không có resultTruyenThong, tính từ point
-      const point = latestSession.point || 0;
-      ketQua = point >= 11 ? "Tài" : "Xỉu";
-    }
-    
-    // Tạo kết quả biên dịch
     const result = {
       SessionId: parseInt(latestSession.id),
-      FirstDice: parseInt(latestSession.dices[0]) || 0,
-      SecondDice: parseInt(latestSession.dices[1]) || 0,
-      ThirdDice: parseInt(latestSession.dices[2]) || 0,
-      DiceSum: parseInt(latestSession.point) || 0,
+      FirstDice: parseInt(latestSession.dices[0]),
+      SecondDice: parseInt(latestSession.dices[1]),
+      ThirdDice: parseInt(latestSession.dices[2]),
+      DiceSum: parseInt(latestSession.point),
       KetQua: ketQua,
-      CreatedDate: new Date().toISOString(),
-      RawData: latestSession // Lưu dữ liệu gốc để debug
+      CreatedDate: new Date().toISOString()
     };
     
-    // Tính toán lại DiceSum nếu cần
-    if (result.DiceSum === 0) {
-      result.DiceSum = result.FirstDice + result.SecondDice + result.ThirdDice;
-    }
-    
-    // Kiểm tra tính nhất quán
-    const calculatedSum = result.FirstDice + result.SecondDice + result.ThirdDice;
-    const calculatedResult = calculatedSum >= 11 ? "Tài" : "Xỉu";
-    
-    console.log(`🎲 Biên dịch thành công: Phiên ${result.SessionId}`);
-    console.log(`   Xúc xắc: ${result.FirstDice}, ${result.SecondDice}, ${result.ThirdDice}`);
-    console.log(`   Tổng: ${result.DiceSum} (tính toán: ${calculatedSum})`);
-    console.log(`   Kết quả: ${result.KetQua} (tính toán: ${calculatedResult})`);
-    
-    if (result.DiceSum !== calculatedSum) {
-      console.log(`⚠️  Cảnh báo: Tổng điểm không khớp!`);
-    }
-    
-    if (result.KetQua !== calculatedResult) {
-      console.log(`⚠️  Cảnh báo: Kết quả không khớp với tổng điểm!`);
+    // Kiểm tra dữ liệu hợp lệ
+    if (isNaN(result.SessionId) || isNaN(result.FirstDice) || 
+        isNaN(result.SecondDice) || isNaN(result.ThirdDice) || isNaN(result.DiceSum)) {
+      return null;
     }
     
     lastRealData = result;
     return result;
     
   } catch (error) {
-    console.error('❌ Lỗi khi lấy dữ liệu từ API:', error.message);
-    if (error.response) {
-      console.error('   Status:', error.response.status);
-      console.error('   Data:', error.response.data);
-    }
     return null;
   }
 }
@@ -10256,15 +10173,12 @@ async function autoUpdateData() {
     const currentData = await getLatestResult();
     
     if (!currentData) {
-      console.log('⏭️ Không có dữ liệu mới, bỏ qua cập nhật');
       return;
     }
     
     const isNewSession = !sessionHistory.has(currentData.SessionId);
     
     if (isNewSession) {
-      console.log(`🆕 Phát hiện phiên mới: #${currentData.SessionId} - ${currentData.KetQua}`);
-      
       sessionHistory.set(currentData.SessionId, {
         result: currentData.KetQua,
         dice: [currentData.FirstDice, currentData.SecondDice, currentData.ThirdDice],
@@ -10295,10 +10209,8 @@ async function autoUpdateData() {
         if (predictionResult === "Đúng") {
           correctPredictions++;
           consecutiveLosses = 0;
-          console.log(`✅ Dự đoán ĐÚNG cho phiên ${currentData.SessionId}: ${previousPrediction}`);
         } else {
           consecutiveLosses++;
-          console.log(`❌ Dự đoán SAI cho phiên ${currentData.SessionId}: ${previousPrediction} (thực tế: ${currentData.KetQua})`);
         }
         
         predictionHistory.delete(currentData.SessionId);
@@ -10312,25 +10224,21 @@ async function autoUpdateData() {
       lastPattern = nextPrediction.pattern;
       
       predictionHistory.set(nextSessionId, lastPrediction);
-      console.log(`🔮 Dự đoán cho phiên ${nextSessionId}: ${lastPrediction}`);
     }
     
   } catch (error) {
-    console.error('💥 Lỗi trong autoUpdateData:', error.message);
+    // Không log lỗi
   }
 }
 
 // =========== ROUTE API ===========
 app.get('/api/data', async (req, res) => {
   try {
-    console.log('📥 Nhận request API /api/data');
-    
     await autoUpdateData();
     
     const currentData = lastRealData;
     
     if (!currentData) {
-      console.log('📭 Không có dữ liệu để trả về');
       return res.json({
         error: "Không có dữ liệu",
         message: "Đang chờ dữ liệu từ API",
@@ -10386,26 +10294,16 @@ app.get('/api/data', async (req, res) => {
       lich_su_gian: history.slice(-10).map(h => h === 'T' ? 'Tài' : 'Xỉu'),
       pattern_hien_tai: lastPattern,
       timestamp: new Date().toISOString(),
-      data_source: "API mới - https://wtx.macminim6.online",
-      api_format: "resultTruyenThong & dices",
+      data_source: "API: https://wtx.macminim6.online/v1/tx/sessions",
       auto_update: isAutoUpdating,
-      update_interval: CONFIG.UPDATE_INTERVAL / 1000 + " giây",
-      raw_data: currentData.RawData ? {
-        id: currentData.RawData.id,
-        resultTruyenThong: currentData.RawData.resultTruyenThong,
-        dices: currentData.RawData.dices,
-        point: currentData.RawData.point
-      } : null
+      update_interval: CONFIG.UPDATE_INTERVAL / 1000 + " giây"
     };
     
-    console.log(`📤 Trả về dữ liệu cho phiên ${currentData.SessionId}`);
     res.json(response);
     
   } catch (error) {
-    console.error('💥 Lỗi trong /api/data:', error.message);
     res.status(500).json({
       error: "Lỗi server",
-      message: error.message,
       timestamp: new Date().toISOString()
     });
   }
@@ -10419,7 +10317,7 @@ app.get('/', (req, res) => {
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dự Đoán Tài Xỉu - API Mới</title>
+    <title>Dự Đoán Tài Xỉu</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body { font-family: Arial, sans-serif; background: #0f172a; color: #fff; min-height: 100vh; padding: 15px; }
@@ -10427,8 +10325,6 @@ app.get('/', (req, res) => {
       header { text-align: center; padding: 20px 0; background: rgba(30, 41, 59, 0.8); border-radius: 10px; margin-bottom: 20px; }
       h1 { font-size: 1.8em; margin-bottom: 5px; color: #3b82f6; }
       .subtitle { font-size: 0.9em; color: #94a3b8; margin-bottom: 10px; }
-      .data-source { background: rgba(22, 163, 74, 0.2); color: #22c55e; padding: 5px 10px; border-radius: 15px; font-size: 0.8em; display: inline-block; }
-      .api-info { background: rgba(59, 130, 246, 0.2); color: #3b82f6; padding: 5px 10px; border-radius: 15px; font-size: 0.8em; display: inline-block; margin-left: 10px; }
       .dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; margin-bottom: 20px; }
       .card { background: rgba(30, 41, 59, 0.8); border-radius: 10px; padding: 15px; border: 1px solid rgba(255, 255, 255, 0.1); }
       .card h2 { font-size: 1.1em; margin-bottom: 10px; color: #60a5fa; display: flex; align-items: center; gap: 8px; }
@@ -10457,7 +10353,6 @@ app.get('/', (req, res) => {
       .strategy { background: rgba(245, 158, 11, 0.15); padding: 10px; border-radius: 6px; margin-top: 10px; font-size: 0.85em; }
       .api-link { margin-top: 10px; text-align: center; }
       .api-link a { color: #60a5fa; text-decoration: none; padding: 6px 12px; background: rgba(15, 23, 42, 0.8); border-radius: 6px; display: inline-block; font-size: 0.8em; }
-      .raw-data { margin-top: 10px; padding: 10px; background: rgba(0, 0, 0, 0.3); border-radius: 6px; font-size: 0.75em; color: #94a3b8; font-family: monospace; }
       @media (max-width: 768px) { .dashboard { grid-template-columns: 1fr; } .dice { width: 45px; height: 45px; } h1 { font-size: 1.5em; } }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -10466,14 +10361,8 @@ app.get('/', (req, res) => {
     <div class="container">
       <header>
         <h1><i class="fas fa-chart-line"></i> Dự Đoán Tài Xỉu</h1>
-        <div class="subtitle">Biên dịch từ API mới: resultTruyenThong & dices</div>
-        <div id="status" class="subtitle">Đang kết nối đến API...</div>
-        <div class="data-source">
-          <i class="fas fa-link"></i> API: https://wtx.macminim6.online
-        </div>
-        <div class="api-info">
-          <i class="fas fa-code"></i> Format: resultTruyenThong & dices
-        </div>
+        <div class="subtitle">Hệ thống dự đoán từ API: resultTruyenThong & dices</div>
+        <div id="status" class="subtitle">Đang kết nối...</div>
         <div class="api-link">
           <a href="/api/data" target="_blank"><i class="fas fa-code"></i> Xem JSON API (/api/data)</a>
         </div>
@@ -10483,21 +10372,21 @@ app.get('/', (req, res) => {
         <div class="card">
           <h2><i class="fas fa-dice"></i> Kết Quả Hiện Tại</h2>
           <div id="currentResult">
-            <div class="loading">Đang tải dữ liệu từ API mới...</div>
+            <div class="loading">Đang tải dữ liệu...</div>
           </div>
         </div>
         
         <div class="card">
           <h2><i class="fas fa-bullseye"></i> Dự Đoán Tiếp Theo</h2>
           <div id="prediction">
-            <div class="loading">Đang phân tích dữ liệu...</div>
+            <div class="loading">Đang tính toán...</div>
           </div>
         </div>
         
         <div class="card">
           <h2><i class="fas fa-chart-bar"></i> Thống Kê</h2>
           <div id="stats">
-            <div class="loading">Đang tính toán thống kê...</div>
+            <div class="loading">Đang tải thống kê...</div>
           </div>
         </div>
       </div>
@@ -10509,18 +10398,10 @@ app.get('/', (req, res) => {
         </div>
       </div>
       
-      <div class="card">
-        <h2><i class="fas fa-code"></i> Dữ Liệu Gốc Từ API</h2>
-        <div id="rawData" class="raw-data">
-          Đang tải dữ liệu gốc...
-        </div>
-      </div>
-      
       <div class="buttons">
         <button onclick="refreshData()"><i class="fas fa-sync-alt"></i> Làm Mới</button>
         <button onclick="toggleAutoRefresh()"><i class="fas fa-clock"></i> <span id="autoRefreshText">Tự Động: BẬT</span></button>
-        <button onclick="showPattern()"><i class="fas fa-project-diagram"></i> Xem Pattern</button>
-        <button onclick="showDebugInfo()"><i class="fas fa-bug"></i> Debug Info</button>
+        <button onclick="window.open('/api/data', '_blank')"><i class="fas fa-file-code"></i> Xem JSON</button>
       </div>
       
       <div class="timestamp">
@@ -10560,36 +10441,31 @@ app.get('/', (req, res) => {
       }
       
       function refreshData() {
-        document.getElementById('status').textContent = 'Đang làm mới dữ liệu...';
         fetchData();
         if (autoRefresh) startAutoRefresh();
       }
       
       function fetchData() {
-        document.getElementById('status').textContent = 'Đang lấy dữ liệu từ API...';
+        document.getElementById('status').textContent = 'Đang cập nhật...';
         fetch('/api/data')
           .then(response => response.json())
           .then(data => {
             if (data.error) {
               document.getElementById('status').textContent = 'Lỗi: ' + data.message;
-              document.getElementById('lastUpdate').textContent = 'Lỗi';
               return;
             }
             updateDisplay(data);
-            document.getElementById('status').textContent = 'Đã cập nhật từ API mới';
+            document.getElementById('status').textContent = 'Đã cập nhật';
             updateTime();
           })
           .catch(error => {
-            document.getElementById('status').textContent = 'Lỗi kết nối API';
-            document.getElementById('lastUpdate').textContent = 'Lỗi';
+            document.getElementById('status').textContent = 'Lỗi kết nối';
           });
       }
       
       function updateDisplay(data) {
-        // Cập nhật phiên mới nhất
         document.getElementById('latestSession').textContent = data.Phien || '--';
         
-        // Kết quả hiện tại
         document.getElementById('currentResult').innerHTML = \`
           <div class="info-grid">
             <div class="info-item">
@@ -10614,12 +10490,8 @@ app.get('/', (req, res) => {
             <div class="dice">\${data.Xuc_xac_2}</div>
             <div class="dice">\${data.Xuc_xac_3}</div>
           </div>
-          <div style="font-size: 0.8em; color: #94a3b8; text-align: center; margin-top: 10px;">
-            <i class="fas fa-code"></i> resultTruyenThong: "\${data.raw_data?.resultTruyenThong || 'N/A'}"
-          </div>
         \`;
         
-        // Dự đoán
         document.getElementById('prediction').innerHTML = \`
           <div class="prediction">
             <div class="label">Phiên tiếp theo: #\${data.phien_hien_tai}</div>
@@ -10632,7 +10504,6 @@ app.get('/', (req, res) => {
           </div>
         \`;
         
-        // Thống kê
         document.getElementById('stats').innerHTML = \`
           <div class="stats-grid">
             <div class="stat-item">
@@ -10654,59 +10525,15 @@ app.get('/', (req, res) => {
           </div>
           <div style="margin-top: 10px; font-size: 0.8em; color: #94a3b8;">
             <div><i class="fas fa-chart-pie"></i> Tài: \${data.thong_ke.ty_le_thuc_te.tai} | Xỉu: \${data.thong_ke.ty_le_thuc_te.xiu}</div>
-            <div><i class="fas fa-history"></i> Đã xử lý: \${data.thong_ke.tong_phien_da_xu_ly || 0} phiên</div>
           </div>
         \`;
         
-        // Lịch sử
         document.getElementById('history').innerHTML = data.lich_su_gian.map((item, index) => {
           const isTai = item === 'Tài';
           return \`<div class="history-item \${isTai ? 'tai' : 'xiu'}">\${isTai ? 'T' : 'X'}</div>\`;
         }).join('');
-        
-        // Dữ liệu gốc
-        if (data.raw_data) {
-          document.getElementById('rawData').innerHTML = \`
-            <div><strong>id:</strong> \${data.raw_data.id}</div>
-            <div><strong>resultTruyenThong:</strong> \${data.raw_data.resultTruyenThong}</div>
-            <div><strong>dices:</strong> [\${data.raw_data.dices?.join(', ') || ''}]</div>
-            <div><strong>point:</strong> \${data.raw_data.point}</div>
-          \`;
-        }
       }
       
-      function showPattern() {
-        fetch('/api/data')
-          .then(response => response.json())
-          .then(data => {
-            alert('Pattern hiện tại:\\n\\n' + (data.pattern_hien_tai || 'Chưa có đủ dữ liệu') + 
-                  '\\n\\nLịch sử 10 lần:\\n' + data.lich_su_gian.join(' '));
-          });
-      }
-      
-      function showDebugInfo() {
-        fetch('/api/data')
-          .then(response => response.json())
-          .then(data => {
-            const debugInfo = \`
-API URL: \${data.data_source || 'N/A'}
-Phiên hiện tại: \${data.Phien}
-Dữ liệu gốc: 
-  id: \${data.raw_data?.id || 'N/A'}
-  resultTruyenThong: \${data.raw_data?.resultTruyenThong || 'N/A'}
-  dices: \${JSON.stringify(data.raw_data?.dices || [])}
-  point: \${data.raw_data?.point || 'N/A'}
-Thống kê:
-  Tổng dự đoán: \${data.thong_ke.tong_du_doan}
-  Đúng: \${data.thong_ke.dung}
-  Tỷ lệ: \${data.thong_ke.ti_le}
-  Thua liên tiếp: \${data.thong_ke.thua_lien_tiep}
-            \`;
-            alert(debugInfo);
-          });
-      }
-      
-      // Khởi động
       document.addEventListener('DOMContentLoaded', function() {
         fetchData();
         startAutoRefresh();
@@ -10720,32 +10547,17 @@ Thống kê:
 
 // =========== KHỞI ĐỘNG SERVER ===========
 app.listen(CONFIG.PORT, () => {
-  console.log('🚀 ==========================================');
-  console.log(`   Server đang chạy tại: http://localhost:${CONFIG.PORT}`);
-  console.log(`   API Endpoint: http://localhost:${CONFIG.PORT}/api/data`);
-  console.log(`   API Nguồn: ${CONFIG.API_URL}`);
-  console.log('   Hệ thống sẽ tự động cập nhật mỗi 5 giây');
-  console.log('   Đang kết nối đến API mới...');
-  console.log('🚀 ==========================================');
+  console.log(`Server chạy tại http://localhost:${CONFIG.PORT}`);
   
-  // Chạy ngay lần đầu
   autoUpdateData();
   
-  // Thiết lập interval để chạy liên tục
   const updateInterval = setInterval(async () => {
     if (isAutoUpdating) {
       await autoUpdateData();
     }
   }, CONFIG.UPDATE_INTERVAL);
   
-  // Đảm bảo dừng interval khi server tắt
   process.on('SIGINT', () => {
-    console.log('\n\n📊 Thống kê cuối cùng:');
-    console.log(`   Tổng dự đoán: ${totalPredictions}`);
-    console.log(`   Dự đoán đúng: ${correctPredictions}`);
-    console.log(`   Tỷ lệ đúng: ${totalPredictions > 0 ? ((correctPredictions / totalPredictions) * 100).toFixed(2) : 0}%`);
-    console.log(`   Phiên đã xử lý: ${sessionHistory.size}`);
-    console.log('\n👋 Tắt server...');
     clearInterval(updateInterval);
     process.exit(0);
   });
