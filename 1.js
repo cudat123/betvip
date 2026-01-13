@@ -59,12 +59,18 @@ async function getLatestResult() {
       return null;
     }
     
-    // Tìm phiên có ID lớn nhất (phiên mới nhất)
-    let latestSession = data[0];
-    for (const session of data) {
-      if (session.id > latestSession.id) {
-        latestSession = session;
-      }
+    // SẮP XẾP THEO ID GIẢM DẦN để lấy phiên mới nhất đầu tiên
+    const sortedSessions = [...data].sort((a, b) => {
+      const idA = parseInt(a.id) || 0;
+      const idB = parseInt(b.id) || 0;
+      return idB - idA; // Giảm dần
+    });
+    
+    const latestSession = sortedSessions[0];
+    
+    // KIỂM TRA DỮ LIỆU
+    if (!latestSession || !latestSession.id || !latestSession.dices || !Array.isArray(latestSession.dices)) {
+      return null;
     }
     
     // BIÊN DỊCH DUY NHẤT:
